@@ -180,7 +180,6 @@ jobs:
               echo "| \`$path\` | $n |"
             done
             echo
-            echo "Checks: \`pnpm run check\` (typecheck, biome, tests, smoke test) passed in the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           } > /tmp/sync-report.md
           {
             echo "### Upstream sync: \`${UPSTREAM_BRANCH}\`"
@@ -250,6 +249,8 @@ jobs:
         run: |
           set -euo pipefail
           git push --force origin "HEAD:refs/heads/$SYNC_BRANCH"
+          printf '\nChecks: `pnpm run check` (typecheck, biome, tests, smoke test) passed in the [workflow run](%s/%s/actions/runs/%s).\n' \
+            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" >> /tmp/sync-report.md
           # --repo is required: this job also adds a remote named `upstream`, which makes
           # gh resolve the parent repository (ayagmar/pi-extmgr) instead of the fork.
           existing="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$SYNC_BRANCH" --state open --json number --jq '.[0].number // empty')"
