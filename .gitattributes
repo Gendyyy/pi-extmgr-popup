@@ -1,0 +1,17 @@
+# Fork-owned files — the popup rewrite lives here.
+#
+# `merge=forkours` makes an upstream merge keep the fork's version instead of
+# producing conflict markers. The driver has to be enabled per clone:
+#
+#     git config merge.forkours.driver true
+#
+# (`true` exits 0 without writing %A, so git keeps the current branch's copy.)
+# The scheduled "Upstream sync" workflow sets it up automatically, then verifies
+# that these paths are byte-identical to master after the merge and reports every
+# upstream commit that touched them, so nothing upstream is dropped silently.
+#
+# Keep this list in sync with scripts/fork-owned-paths.txt.
+README.md merge=forkours
+src/ui/health.ts merge=forkours
+src/ui/help.ts merge=forkours
+src/ui/profiles.ts merge=forkours
