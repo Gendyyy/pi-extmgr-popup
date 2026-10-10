@@ -1,0 +1,253 @@
+name: Upstream sync
+
+# Keeps this fork current with ayagmar/pi-extmgr without letting upstream touch the
+# popup rewrite:
+#
+#   * upstream is merged into a throwaway `sync/upstream` branch — never directly into
+#     master — so a failed merge can never break the branch you install from;
+#   * the fork-owned paths (scripts/fork-owned-paths.txt, `.gitattributes`) are pinned
+#     with `merge=forkours`, and this job fails if the merge changed any of them;
+#   * upstream commits that touched those paths are listed in the job summary, so a
+#     pinned change is reported instead of silently dropped;
+#   * `pnpm run check` (typecheck, biome, tests, smoke test) gates the sync — the pull
+#     request only opens once the merge is green.
+
+on:
+  schedule:
+    # Daily at 05:17 UTC — off the hour to dodge the top-of-hour cron rush.
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+    inputs:
+      upstream_branch:
+        description: Branch on ayagmar/pi-extmgr to sync from
+        required: false
+        default: master
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  UPSTREAM_URL: https://github.com/ayagmar/pi-extmgr.git
+  UPSTREAM_BRANCH: ${{ github.event.inputs.upstream_branch || 'master' }}
+  SYNC_BRANCH: sync/upstream
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: master
+
+      - name: Detect upstream changes
+        id: prepare
+        run: |
+          set -euo pipefail
+          if git remote get-url upstream >/dev/null 2>&1; then
+            git remote set-url upstream "$UPSTREAM_URL"
+          else
+            git remote add upstream "$UPSTREAM_URL"
+          fi
+          git fetch --no-tags upstream "$UPSTREAM_BRANCH"
+          upstream_sha="$(git rev-parse FETCH_HEAD)"
+          git fetch --no-tags origin master
+          master_sha="$(git rev-parse FETCH_HEAD)"
+          echo "upstream_sha=$upstream_sha" >> "$GITHUB_OUTPUT"
+          echo "master_sha=$master_sha" >> "$GITHUB_OUTPUT"
+          if git merge-base --is-ancestor "$upstream_sha" "$master_sha"; then
+            echo "sync=false" >> "$GITHUB_OUTPUT"
+            echo "upstream/$UPSTREAM_BRANCH is already contained in master — nothing to sync."
+          else
+            echo "sync=true" >> "$GITHUB_OUTPUT"
+            echo "Behind upstream/$UPSTREAM_BRANCH by $(git rev-list --count "$master_sha..$upstream_sha") commit(s)."
+          fi
+
+      - name: Merge upstream into ${{ env.SYNC_BRANCH }}
+        if: steps.prepare.outputs.sync == 'true'
+        env:
+          MASTER_SHA: ${{ steps.prepare.outputs.master_sha }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # `merge=forkours` (see .gitattributes) keeps the fork's copy of fork-owned
+          # files instead of writing conflict markers.
+          git config merge.forkours.driver true
+          # package.json: take upstream's side (the fork keeps no local package.json changes).
+          git config merge.forktheirs.driver "cp %B %A"
+          git config rerere.enabled true
+          git config rerere.autoupdate true
+          # Replay resolutions learned locally with scripts/save-rerere.sh.
+          if [ -d .github/rerere ]; then
+            mkdir -p .git/rr-cache
+            cp -R .github/rerere/. .git/rr-cache/
+          fi
+
+          git checkout -B "$SYNC_BRANCH" "$MASTER_SHA"
+          if git merge --no-edit -m "chore: sync upstream/${UPSTREAM_BRANCH}" "upstream/${UPSTREAM_BRANCH}"; then
+            echo "Merged cleanly."
+            exit 0
+          fi
+
+          conflicts="$(git diff --name-only --diff-filter=U)"
+          if [ "$conflicts" = "pnpm-lock.yaml" ]; then
+            # The lockfile is generated: reconcile it from the merged package.json instead
+            # of resolving it by hand. `pnpm install` below rewrites it either way.
+            echo "Only pnpm-lock.yaml conflicts — regenerating from the merged package.json."
+            git checkout --ours pnpm-lock.yaml
+            git add pnpm-lock.yaml
+            git commit --no-edit
+            exit 0
+          fi
+
+          {
+            echo "### ⚠️ Upstream sync needs manual resolution"
+            echo
+            echo "Merging \`upstream/${UPSTREAM_BRANCH}\` into \`${SYNC_BRANCH}\` conflicted in:"
+            echo
+            echo '```'
+            echo "$conflicts"
+            echo '```'
+            echo
+            echo "Resolve locally from \`${SYNC_BRANCH}\`, then re-run this workflow:"
+            echo
+            echo '```bash'
+            echo "git fetch upstream ${UPSTREAM_BRANCH}"
+            echo "git checkout -B ${SYNC_BRANCH} origin/master"
+            echo "git config merge.forkours.driver true && git config rerere.enabled true"
+            echo "git merge upstream/${UPSTREAM_BRANCH}   # fix the files listed above"
+            echo "pnpm run check && git push --force origin ${SYNC_BRANCH}"
+            echo "scripts/save-rerere.sh                   # make this resolution automatic next time"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          git merge --abort
+          exit 1
+
+      - name: Verify fork-owned files survived
+        if: steps.prepare.outputs.sync == 'true'
+        env:
+          MASTER_SHA: ${{ steps.prepare.outputs.master_sha }}
+        run: |
+          set -euo pipefail
+          pinned=()
+          while IFS= read -r path; do
+            [ -n "$path" ] && pinned+=("$path")
+          done < scripts/fork-owned-paths.txt
+          drift=0
+          for path in "${pinned[@]}"; do
+            attr="$(git check-attr merge -- "$path" | awk '{print $3}')"
+            if [ "$attr" != "forkours" ]; then
+              echo "::error file=$path::missing 'merge=forkours' in .gitattributes — keep it in sync with scripts/fork-owned-paths.txt"
+              drift=1
+            fi
+          done
+          [ "$drift" -eq 0 ] || exit 1
+          if ! git diff --quiet "$MASTER_SHA" -- "${pinned[@]}"; then
+            echo "::error::the merge rewrote fork-owned files despite merge=forkours"
+            git diff --stat "$MASTER_SHA" -- "${pinned[@]}"
+            exit 1
+          fi
+          echo "All ${#pinned[@]} fork-owned files kept the fork's version."
+
+      - name: Write sync report
+        if: steps.prepare.outputs.sync == 'true'
+        env:
+          MASTER_SHA: ${{ steps.prepare.outputs.master_sha }}
+          UPSTREAM_SHA: ${{ steps.prepare.outputs.upstream_sha }}
+        run: |
+          set -euo pipefail
+          pinned=()
+          while IFS= read -r path; do
+            [ -n "$path" ] && pinned+=("$path")
+          done < scripts/fork-owned-paths.txt
+          count="$(git rev-list --count "$MASTER_SHA..$UPSTREAM_SHA")"
+          {
+            echo "Merges \`upstream/${UPSTREAM_BRANCH}\` (${count} commit(s)) into the fork, keeping this fork's popup UI."
+            echo
+            echo "Fork-owned files below stayed on the fork's version — port anything you want from upstream by hand."
+            echo
+            echo "| fork-owned file | upstream commits kept aside |"
+            echo "| --- | --- |"
+            for path in "${pinned[@]}"; do
+              n="$(git rev-list --count "$MASTER_SHA..$UPSTREAM_SHA" -- "$path")"
+              echo "| \`$path\` | $n |"
+            done
+            echo
+            echo "Checks: \`pnpm run check\` (typecheck, biome, tests, smoke test) passed in the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          } > /tmp/sync-report.md
+          {
+            echo "### Upstream sync: \`${UPSTREAM_BRANCH}\`"
+            echo
+            cat /tmp/sync-report.md
+            echo
+            detailed=0
+            for path in "${pinned[@]}"; do
+              commits="$(git log --oneline "$MASTER_SHA..$UPSTREAM_SHA" -- "$path")"
+              [ -n "$commits" ] || continue
+              detailed=1
+              echo "<details><summary>upstream commits that touched <code>$path</code></summary>"
+              echo
+              echo '```'
+              echo "$commits"
+              echo '```'
+              echo
+              echo "</details>"
+            done
+            [ "$detailed" -eq 1 ] || echo "_No upstream commit touched a fork-owned file this time._"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Setup pnpm
+        if: steps.prepare.outputs.sync == 'true'
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        if: steps.prepare.outputs.sync == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        if: steps.prepare.outputs.sync == 'true'
+        # Not --frozen-lockfile: a merged package.json may legitimately need a new lockfile.
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Check merged tree
+        if: steps.prepare.outputs.sync == 'true'
+        run: pnpm run check
+
+      - name: Record learned conflict resolutions
+        if: steps.prepare.outputs.sync == 'true'
+        run: |
+          set -euo pipefail
+          if [ -d .git/rr-cache ] && [ -n "$(ls -A .git/rr-cache)" ]; then
+            mkdir -p .github/rerere
+            cp -R .git/rr-cache/. .github/rerere/
+            git add .github/rerere
+            git diff --cached --quiet || git commit -m "chore: record upstream conflict resolutions"
+          fi
+
+      - name: Push branch and open pull request
+        if: steps.prepare.outputs.sync == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git push --force origin "HEAD:refs/heads/$SYNC_BRANCH"
+          existing="$(gh pr list --head "$SYNC_BRANCH" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh pr comment "$existing" --body "Updated with \`upstream/${UPSTREAM_BRANCH}\` at $(git rev-parse --short HEAD)."
+          else
+            gh pr create \
+              --base master \
+              --head "$SYNC_BRANCH" \
+              --title "chore: sync upstream/${UPSTREAM_BRANCH}" \
+              --body-file /tmp/sync-report.md
+          fi

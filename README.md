@@ -253,9 +253,70 @@ notifications.
 - **Trash lifecycle**: Local removals move to `~/.pi/agent/.extmgr-trash/` with persistent records. Undo refuses to overwrite a replacement file, and expired or missing records are cleaned up.
 - **Metadata safety**: Missing compatibility, provenance, checksum, or target-version metadata is reported as `unknown`, never `safe`. Target-version previews, exact target badges, and update-policy/maintenance-window enforcement are intentionally deferred because Pi does not expose structured target metadata.
 
+## Keeping up with upstream
+
+This fork tracks `ayagmar/pi-extmgr` automatically without letting upstream overwrite the popup UI.
+
+**How it works.** A scheduled workflow ([`.github/workflows/upstream-sync.yml`](.github/workflows/upstream-sync.yml),
+daily at 05:17 UTC — or run it by hand with `gh workflow run upstream-sync.yml`) fetches upstream and merges it
+into a throwaway `sync/upstream` branch, never straight into `master`. If the merge is clean and `pnpm run check`
+passes, the branch is pushed and a pull request is opened for review. A conflict fails the run and prints the exact
+commands to resolve it.
+
+**Fork-owned files.** Upstream merges must never touch the popup implementation. These paths are listed in
+[`scripts/fork-owned-paths.txt`](scripts/fork-owned-paths.txt) and pinned in [`.gitattributes`](.gitattributes) with
+`merge=forkours`, so an upstream merge keeps the fork's copy instead of writing conflict markers:
+
+| File | Why the fork owns it |
+| --- | --- |
+| `README.md` | documents the popup, not the upstream full-screen manager |
+| `src/ui/help.ts` | popup help text |
+| `src/ui/profiles.ts` | popup-mode chrome for the profile screens |
+| `src/ui/health.ts` | popup-mode chrome for the health screen |
+
+Each sync pull request reports every upstream commit that touched one of those files (a count per file plus the
+subjects), so an upstream fix is never dropped silently — port it by hand when it matters. To pin another path, add it
+to both files; the workflow fails when `.gitattributes` and `scripts/fork-owned-paths.txt` drift apart.
+
+The `merge=forkours` driver has to be enabled in every clone you merge from:
+
+```bash
+git config merge.forkours.driver true
+```
+
+(`true` exits 0 without writing the output file, so git keeps the current branch's copy.)
+
+**Conflicts.** `pnpm-lock.yaml` conflicts resolve themselves (the lockfile is regenerated from the merged
+`package.json`). Anything else fails the run with the conflicting paths in the run summary. Resolve once, then export
+the resolution so later runs replay it automatically:
+
+```bash
+git config rerere.enabled true     # once per clone
+# ... resolve the merge, commit it, then:
+scripts/save-rerere.sh             # stages .github/rerere
+git commit                          # the workflow copies it back before merging
+```
+
+**Staying merge-friendly.** Prefer appending over deleting upstream lines, keep popup-only code in new files
+(`src/ui/popup/`, `src/utils/open-repository.ts`), and leave `package.json` byte-identical to upstream — it keeps
+upstream's own name and version, which is what makes upstream's release commits merge cleanly.
+
+**Manual sync** (the same steps the workflow runs):
+
+```bash
+git fetch upstream master
+git checkout -B sync/upstream origin/master
+git config merge.forkours.driver true
+git merge upstream/master
+pnpm run check
+git push --force origin sync/upstream
+```
+
 ## Releasing
 
-Releases are cut from GitHub Actions — never from a laptop.
+Releases are cut from GitHub Actions — never from a laptop. This is upstream's release flow; the fork keeps
+`package.json` identical to upstream and **cannot** publish to npm, because trusted publishing is registered to
+`ayagmar/pi-extmgr`. Run this workflow only if you later fork the publishing setup too.
 
 1. Merge Conventional Commits (`feat:`, `fix:`, `feat!:` …) into `master`.
 2. Run **Actions → Release → Run workflow** (or `gh workflow run release.yml -f increment=auto`).

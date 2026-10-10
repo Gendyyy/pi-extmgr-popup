@@ -11,6 +11,10 @@
 # upstream commit that touched them, so nothing upstream is dropped silently.
 #
 # Keep this list in sync with scripts/fork-owned-paths.txt.
+# package.json carries no fork-only content on purpose (see README): the fork keeps
+# upstream's own name/version/repository, so upstream's version is always the right
+# answer and release commits never conflict.
+package.json merge=forktheirs
 README.md merge=forkours
 src/ui/health.ts merge=forkours
 src/ui/help.ts merge=forkours
