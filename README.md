@@ -258,7 +258,9 @@ notifications.
 This fork tracks `ayagmar/pi-extmgr` automatically without letting upstream overwrite the popup UI.
 
 **How it works.** A scheduled workflow ([`.github/workflows/upstream-sync.yml`](.github/workflows/upstream-sync.yml),
-daily at 05:17 UTC — or run it by hand with `gh workflow run upstream-sync.yml`) fetches upstream and merges it
+daily at 05:17 UTC — or run it by hand with `gh workflow run upstream-sync.yml -R Gendyyy/pi-extmgr-popup`; the
+`-R` matters because this clone also has an `upstream` remote, and `gh` would otherwise target `ayagmar/pi-extmgr`)
+fetches upstream and merges it
 into a throwaway `sync/upstream` branch, never straight into `master`. If the merge is clean and `pnpm run check`
 passes, the branch is pushed and a pull request is opened for review. A conflict fails the run and prints the exact
 commands to resolve it.
