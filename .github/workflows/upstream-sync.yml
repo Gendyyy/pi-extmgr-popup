@@ -219,6 +219,15 @@ jobs:
         # Not --frozen-lockfile: a merged package.json may legitimately need a new lockfile.
         run: pnpm install --no-frozen-lockfile
 
+      - name: Commit regenerated lockfile
+        if: steps.prepare.outputs.sync == 'true'
+        run: |
+          set -euo pipefail
+          git add pnpm-lock.yaml
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: regenerate pnpm-lock.yaml after upstream sync"
+          fi
+
       - name: Check merged tree
         if: steps.prepare.outputs.sync == 'true'
         run: pnpm run check
@@ -241,11 +250,14 @@ jobs:
         run: |
           set -euo pipefail
           git push --force origin "HEAD:refs/heads/$SYNC_BRANCH"
-          existing="$(gh pr list --head "$SYNC_BRANCH" --state open --json number --jq '.[0].number // empty')"
+          # --repo is required: this job also adds a remote named `upstream`, which makes
+          # gh resolve the parent repository (ayagmar/pi-extmgr) instead of the fork.
+          existing="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$SYNC_BRANCH" --state open --json number --jq '.[0].number // empty')"
           if [ -n "$existing" ]; then
-            gh pr comment "$existing" --body "Updated with \`upstream/${UPSTREAM_BRANCH}\` at $(git rev-parse --short HEAD)."
+            gh pr comment "$existing" --repo "$GITHUB_REPOSITORY" --body "Updated with \`upstream/${UPSTREAM_BRANCH}\` at $(git rev-parse --short HEAD)."
           else
             gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
               --base master \
               --head "$SYNC_BRANCH" \
               --title "chore: sync upstream/${UPSTREAM_BRANCH}" \
