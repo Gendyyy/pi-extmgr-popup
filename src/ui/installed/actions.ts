@@ -112,7 +112,7 @@ async function applyToggleChangesFromManager(
   return { changed: apply.changed, reloaded: false, hasErrors: apply.errors.length > 0 };
 }
 
-async function resolvePendingChangesBeforeLeave(
+export async function resolvePendingChangesBeforeLeave(
   items: UnifiedItem[],
   staged: Map<string, State>,
   byId: Map<string, UnifiedItem>,

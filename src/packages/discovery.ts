@@ -40,6 +40,7 @@ interface NpmSearchResultObject {
     description?: string;
     keywords?: string[];
     date?: string;
+    links?: { repository?: string };
     publisher?: {
       username?: string;
       email?: string;
@@ -146,6 +147,7 @@ function toNpmPackage(entry: NpmSearchResultObject): NpmPackage | undefined {
     author: getNpmPackageAuthor(pkg),
     keywords: Array.isArray(pkg.keywords) ? pkg.keywords : undefined,
     date: pkg.date,
+    repository: pkg.links?.repository,
   };
 }
 

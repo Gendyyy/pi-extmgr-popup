@@ -15,6 +15,7 @@ import { truncate } from "../../utils/format.js";
 import { activeKeyHint } from "../../utils/key-hints.js";
 import { composeColumns, formatCompactCount, TWO_PANE_MIN_WIDTH } from "../layout.js";
 import { getCenteredVisibleRange, moveListSelection } from "../list-navigation.js";
+import { singleLine } from "../popup/chrome.js";
 import { buildWorkspaceNavigation, matchWorkspaceNavigation } from "../workspace/navigation.js";
 import { formatRemotePackageDetails, formatRemotePackageLabel } from "./formatting.js";
 import { type RemoteBrowseSource } from "./query.js";
@@ -35,10 +36,11 @@ export class RemotePackageBrowser implements Focusable {
     private readonly queryLabel: string,
     private readonly totalResults: number,
     private readonly offset: number,
-    private readonly maxVisibleItems: number,
+    private maxVisibleItems: number,
     private readonly showPrevious: boolean,
     private readonly showLoadMore: boolean,
-    private readonly onAction: (action: BrowseAction) => void
+    private readonly onAction: (action: BrowseAction) => void,
+    private readonly popup = false
   ) {
     this.originalPackages = [...packages];
     this.packages = sortRemotePackages(this.originalPackages, this.sortMode);
@@ -69,8 +71,20 @@ export class RemotePackageBrowser implements Focusable {
     );
   }
 
+  get searching(): boolean {
+    return this.searchActive;
+  }
+
+  getSelectedPackage(): NpmPackage | undefined {
+    return this.packages[this.selectedIndex];
+  }
+
+  setViewportHeight(height: number): void {
+    this.maxVisibleItems = Math.max(1, Math.floor((height - 3) / 2));
+  }
+
   handleBrowseInput(data: string): boolean {
-    const workspaceScreen = matchWorkspaceNavigation(data, "discover");
+    const workspaceScreen = this.popup ? undefined : matchWorkspaceNavigation(data, "discover");
     if (workspaceScreen) {
       this.onAction({ type: "workspace", screen: workspaceScreen });
       return true;
@@ -185,6 +199,7 @@ export class RemotePackageBrowser implements Focusable {
   }
 
   render(width: number): string[] {
+    if (this.popup) return this.renderPopup(Math.max(1, width));
     const safeWidth = Math.max(1, width);
     const lines: string[] = [
       truncateToWidth(buildWorkspaceNavigation(this.theme, "discover"), safeWidth, ""),
@@ -267,6 +282,43 @@ export class RemotePackageBrowser implements Focusable {
 
     lines.push("");
     lines.push(truncateToWidth(this.buildFooterLine(), safeWidth, ""));
+    return lines;
+  }
+
+  private renderPopup(width: number): string[] {
+    const lines = this.searchActive
+      ? this.searchInput.render(width)
+      : [truncateToWidth(this.buildSummaryLine(), width, "")];
+    lines.push("");
+    if (!this.packages.length) {
+      lines.push(this.theme.fg("muted", "  No packages found. Use / to search again."));
+    }
+    const { startIndex, endIndex } = this.getVisibleRange();
+    for (const pkg of this.packages.slice(startIndex, endIndex)) {
+      const selected = pkg.name === this.getSelectedPackage()?.name;
+      const label = truncateToWidth(
+        `${selected ? "› " : "  "}${singleLine(pkg.name)}${pkg.version ? ` @${singleLine(pkg.version)}` : ""}${pkg.installed ? "  ✓ installed" : ""}${pkg.updateAvailable ? "  ↑ update" : ""}${pkg.weeklyDownloads !== undefined ? `  · ${formatCompactCount(pkg.weeklyDownloads)}/wk` : ""}`,
+        width
+      );
+      lines.push(
+        selected ? this.theme.style(label, { bg: "selectedBg", fg: "text", bold: true }) : label
+      );
+      lines.push(
+        truncateToWidth(
+          this.theme.fg("dim", `  ${singleLine(pkg.description || "No description provided.")}`),
+          width
+        )
+      );
+    }
+    lines.push(
+      truncateToWidth(
+        this.theme.fg(
+          "dim",
+          `  ${this.packages.length ? startIndex + 1 : 0}–${endIndex} of ${this.packages.length} on this page · ${this.showPrevious ? "p previous · " : ""}${this.showLoadMore ? "n next · " : ""}o sort`
+        ),
+        width
+      )
+    );
     return lines;
   }
 

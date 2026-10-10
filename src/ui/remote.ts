@@ -486,6 +486,47 @@ async function confirmMarketplaceInstall(
   return scopeChoice;
 }
 
+/** A transient action dialog; never navigates into the legacy full-screen browser. */
+export async function showMarketplacePackageActions(
+  packageName: string,
+  ctx: ExtensionCommandContext,
+  pi: ExtensionAPI
+): Promise<boolean> {
+  while (true) {
+    const choice = parseChoiceByLabel(
+      PACKAGE_DETAILS_CHOICES,
+      await ctx.ui.select(packageName, Object.values(PACKAGE_DETAILS_CHOICES))
+    );
+    if (!choice || choice === "back") return false;
+    if (choice === "viewInfo") {
+      const text =
+        packageInfoCache.get(packageName)?.text ??
+        (await runTaskWithLoader(
+          ctx,
+          { title: packageName, message: `Fetching package details for ${packageName}...` },
+          ({ signal }) => buildPackageInfoText(packageName, ctx, pi, signal)
+        ));
+      if (text) await showReport(ctx, { title: packageName, lines: text.split("\n") });
+      continue;
+    }
+    const mode = choice === "installManaged" ? "managed" : "standalone";
+    const scope = await confirmMarketplaceInstall(packageName, ctx, pi, mode);
+    if (!scope) continue;
+    const outcome =
+      mode === "managed"
+        ? await installPackageWithOutcome(`npm:${packageName}`, ctx, pi, {
+            scope,
+            skipConfirmation: true,
+          })
+        : await installPackageLocallyWithOutcome(packageName, ctx, pi, {
+            scope,
+            skipConfirmation: true,
+          });
+    if (outcome.reloaded) return true;
+    if (outcome.installed) return false;
+  }
+}
+
 async function showPackageDetails(
   packageName: string,
   ctx: ExtensionCommandContext,

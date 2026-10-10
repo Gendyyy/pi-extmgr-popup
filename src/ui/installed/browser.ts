@@ -13,6 +13,7 @@ import { formatBytes } from "../../utils/format.js";
 import { getPackageSourceKind } from "../../utils/package-source.js";
 import { composeColumns, TWO_PANE_MIN_WIDTH } from "../layout.js";
 import { getCenteredVisibleRange, moveListSelection } from "../list-navigation.js";
+import { singleLine } from "../popup/chrome.js";
 import { getStatusIcon } from "../theme.js";
 import { matchWorkspaceNavigation } from "../workspace/navigation.js";
 import { matchesUnifiedFilter, searchUnifiedItems } from "./filters.js";
@@ -44,11 +45,12 @@ export class UnifiedManagerBrowser implements Focusable {
     private readonly theme: Theme,
     private readonly keybindings: KeybindingsManager,
     private readonly cwd: string,
-    private readonly maxVisibleItems: number,
+    private maxVisibleItems: number,
     private readonly onAction: (action: UnifiedAction) => void,
     private readonly favoriteIds: ReadonlySet<string> = new Set(),
     private readonly recentIds: ReadonlySet<string> = new Set(),
-    initialState?: UnifiedManagerViewState
+    initialState?: UnifiedManagerViewState,
+    private readonly popup = false
   ) {
     if (initialState) {
       for (const id of initialState.selectedItemIds) {
@@ -112,8 +114,16 @@ export class UnifiedManagerBrowser implements Focusable {
     this.handleManagerInput(data);
   }
 
+  get searching(): boolean {
+    return this.searchActive;
+  }
+
+  setViewportHeight(height: number): void {
+    this.maxVisibleItems = Math.max(1, Math.floor((height - 3) / 2));
+  }
+
   handleManagerInput(data: string): boolean {
-    const workspaceScreen = matchWorkspaceNavigation(data, "installed");
+    const workspaceScreen = this.popup ? undefined : matchWorkspaceNavigation(data, "installed");
     if (workspaceScreen) {
       this.onAction({ type: "workspace", screen: workspaceScreen });
       return true;
@@ -324,6 +334,7 @@ export class UnifiedManagerBrowser implements Focusable {
   }
 
   render(width: number): string[] {
+    if (this.popup) return this.renderPopup(Math.max(1, width));
     const safeWidth = Math.max(1, width);
     const lines: string[] = [];
 
@@ -418,6 +429,43 @@ export class UnifiedManagerBrowser implements Focusable {
       }
     }
 
+    return lines;
+  }
+
+  private renderPopup(width: number): string[] {
+    const lines = this.searchActive
+      ? this.searchInput.render(width)
+      : [truncateToWidth(this.buildFilterLine(), width, "")];
+    lines.push("");
+    const { startIndex, endIndex } = this.getVisibleRange();
+    for (const item of this.filteredItems.slice(startIndex, endIndex)) {
+      const selected = item.id === this.getSelectedItem()?.id;
+      const state = getCurrentUnifiedItemState(item, this.staged);
+      const changed = item.type === "local" && state !== item.originalState;
+      const label = this.renderItemLine(item, width);
+      lines.push(selected ? this.theme.bg("selectedBg", label) : label);
+      const description = item.type === "local" ? item.summary : item.description;
+      lines.push(
+        truncateToWidth(
+          this.theme.fg(
+            "dim",
+            `  ${singleLine(description || "No description provided.")} · ${item.scope}${changed ? " · unsaved" : ""}`
+          ),
+          width
+        )
+      );
+    }
+    if (!this.filteredItems.length)
+      lines.push(this.theme.fg("muted", "  No matching items. / search · i install"));
+    lines.push(
+      truncateToWidth(
+        this.theme.fg(
+          "dim",
+          `  ${this.filteredItems.length ? startIndex + 1 : 0}–${endIndex} of ${this.filteredItems.length} · ${this.staged.size} unsaved · ${this.bulkSelectedIds.size} selected`
+        ),
+        width
+      )
+    );
     return lines;
   }
 

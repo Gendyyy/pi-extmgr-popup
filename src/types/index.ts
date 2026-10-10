@@ -40,6 +40,7 @@ export interface NpmPackage {
   keywords?: string[] | undefined;
   date?: string | undefined;
   weeklyDownloads?: number | undefined;
+  repository?: string | undefined;
   size?: number | undefined; // Package size in bytes
   installed?: boolean | undefined;
   updateAvailable?: boolean | undefined;

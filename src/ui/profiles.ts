@@ -23,6 +23,7 @@ import { activeKeyHint } from "../utils/key-hints.js";
 import { requireCustomUI, runCustomUI } from "../utils/mode.js";
 import { notify } from "../utils/notify.js";
 import { confirmAction } from "../utils/ui-helpers.js";
+import { box, popupHeight, popupWidth } from "./popup/chrome.js";
 import { showReport } from "./report.js";
 import {
   buildWorkspaceNavigation,
@@ -53,92 +54,111 @@ function profileDescription(profile: ExtmgrProfile): string {
 
 async function selectProfile(
   ctx: ExtensionCommandContext,
-  profiles: ExtmgrProfile[]
+  profiles: ExtmgrProfile[],
+  popup = false
 ): Promise<ProfileSelection | undefined> {
   return runCustomUI(ctx, "Profiles", () =>
-    ctx.ui.custom<ProfileSelection>((tui, theme, keybindings, done) => {
-      const items: SelectItem[] = profiles.map((profile) => ({
-        value: profile.name,
-        label: profile.name,
-        description: profileDescription(profile),
-      }));
-      items.push(
-        {
-          value: SAVE_PROFILE,
-          label: "Save current package set",
-          description: "Capture installed packages, scopes, filters, and honest diagnostics",
-        },
-        {
-          value: IMPORT_PROFILE,
-          label: "Import profile",
-          description: "Load a local or HTTPS JSON profile; save/review only, never auto-apply",
-        },
-        { value: BACK, label: "Back", description: "Return to the installed screen" }
-      );
-
-      const container = new Container();
-      const title = new Text("", 2, 0);
-      const nav = new Text("", 2, 0);
-      const summary = new Text("", 2, 0);
-      const footer = new Text("", 2, 0);
-      const syncThemedContent = (): void => {
-        title.setText(theme.fg("accent", theme.bold("Profiles")));
-        nav.setText(buildWorkspaceNavigation(theme, "profiles"));
-        summary.setText(
-          theme.fg(
-            "muted",
-            `${profiles.length} saved profile${profiles.length === 1 ? "" : "s"} · choose a profile to preview or apply it`
-          )
-        );
-        footer.setText(
-          theme.fg(
-            "dim",
-            `${activeKeyHint(keybindings, "tui.select.up", "navigate")} · ${activeKeyHint(keybindings, "tui.select.confirm", "choose")} · ${activeKeyHint(keybindings, "tui.select.cancel", "back")}`
-          )
-        );
-      };
-
-      container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
-      container.addChild(title);
-      container.addChild(nav);
-      container.addChild(summary);
-      container.addChild(new Spacer(1));
-
-      const list = new SelectList(items, Math.min(items.length, 12), {
-        selectedPrefix: (text) => theme.fg("accent", text),
-        selectedText: (text) => theme.fg("accent", text),
-        description: (text) => theme.fg("muted", text),
-        scrollInfo: (text) => theme.fg("dim", text),
-        noMatch: (text) => theme.fg("warning", text),
-      });
-      list.onSelect = (item) => done(item.value as ProfileSelection);
-      list.onCancel = () => done(BACK);
-      container.addChild(list);
-      container.addChild(new Spacer(1));
-      container.addChild(footer);
-      container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
-
-      syncThemedContent();
-
-      return {
-        render(width: number) {
-          return container.render(width);
-        },
-        invalidate() {
-          container.invalidate();
-          syncThemedContent();
-        },
-        handleInput(data: string) {
-          const screen = matchWorkspaceNavigation(data, "profiles");
-          if (screen) {
-            if (screen !== "profiles") done(`${NAV_PREFIX}${screen}`);
-            return;
+    ctx.ui.custom<ProfileSelection>(
+      (tui, theme, keybindings, done) => {
+        const items: SelectItem[] = profiles.map((profile) => ({
+          value: profile.name,
+          label: profile.name,
+          description: profileDescription(profile),
+        }));
+        items.push(
+          {
+            value: SAVE_PROFILE,
+            label: "Save current package set",
+            description: "Capture installed packages, scopes, filters, and honest diagnostics",
+          },
+          {
+            value: IMPORT_PROFILE,
+            label: "Import profile",
+            description: "Load a local or HTTPS JSON profile; save/review only, never auto-apply",
+          },
+          {
+            value: BACK,
+            label: "Back",
+            description: popup ? "Return to Settings" : "Return to the installed screen",
           }
-          list.handleInput(data);
-          tui.requestRender();
-        },
-      };
-    })
+        );
+
+        const container = new Container();
+        const title = new Text("", 2, 0);
+        const nav = new Text("", 2, 0);
+        const summary = new Text("", 2, 0);
+        const footer = new Text("", 2, 0);
+        const syncThemedContent = (): void => {
+          title.setText(theme.fg("accent", theme.bold("Profiles")));
+          nav.setText(buildWorkspaceNavigation(theme, "profiles"));
+          summary.setText(
+            theme.fg(
+              "muted",
+              `${profiles.length} saved profile${profiles.length === 1 ? "" : "s"} · choose a profile to preview or apply it`
+            )
+          );
+          footer.setText(
+            theme.fg(
+              "dim",
+              `${activeKeyHint(keybindings, "tui.select.up", "navigate")} · ${activeKeyHint(keybindings, "tui.select.confirm", "choose")} · ${activeKeyHint(keybindings, "tui.select.cancel", "back")}`
+            )
+          );
+        };
+
+        if (!popup) container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+        if (!popup) container.addChild(title);
+        if (!popup) container.addChild(nav);
+        container.addChild(summary);
+        container.addChild(new Spacer(1));
+
+        const list = new SelectList(
+          items,
+          Math.min(items.length, popup ? Math.max(1, popupHeight(tui.terminal.rows) - 8) : 12),
+          {
+            selectedPrefix: (text) => theme.fg("accent", text),
+            selectedText: (text) => theme.fg("accent", text),
+            description: (text) => theme.fg("muted", text),
+            scrollInfo: (text) => theme.fg("dim", text),
+            noMatch: (text) => theme.fg("warning", text),
+          }
+        );
+        list.onSelect = (item) => done(item.value as ProfileSelection);
+        list.onCancel = () => done(BACK);
+        container.addChild(list);
+        container.addChild(new Spacer(1));
+        container.addChild(footer);
+        if (!popup) container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+
+        syncThemedContent();
+
+        return {
+          render(width: number) {
+            return popup
+              ? box(container.render(Math.max(1, width - 2)), width, theme, "Profiles")
+              : container.render(width);
+          },
+          invalidate() {
+            container.invalidate();
+            syncThemedContent();
+          },
+          handleInput(data: string) {
+            const screen = popup ? undefined : matchWorkspaceNavigation(data, "profiles");
+            if (screen) {
+              if (screen !== "profiles") done(`${NAV_PREFIX}${screen}`);
+              return;
+            }
+            list.handleInput(data);
+            tui.requestRender();
+          },
+        };
+      },
+      popup
+        ? {
+            overlay: true,
+            overlayOptions: () => ({ anchor: "center", width: popupWidth(), maxHeight: "90%" }),
+          }
+        : undefined
+    )
   );
 }
 
@@ -197,7 +217,8 @@ async function runProfileAction(
 
 export async function showProfiles(
   ctx: ExtensionCommandContext,
-  pi: ExtensionAPI
+  pi: ExtensionAPI,
+  popup = false
 ): Promise<WorkspaceExit> {
   if (
     !requireCustomUI(ctx, "Profiles", "Use `/extensions profile <action>` outside the full TUI.")
@@ -206,7 +227,7 @@ export async function showProfiles(
   }
 
   while (true) {
-    setWorkspaceTitle(ctx, "profiles");
+    if (!popup) setWorkspaceTitle(ctx, "profiles");
     let profiles: ExtmgrProfile[];
     try {
       profiles = await listProfiles();
@@ -218,7 +239,7 @@ export async function showProfiles(
       );
       return undefined;
     }
-    const selection = await selectProfile(ctx, profiles);
+    const selection = await selectProfile(ctx, profiles, popup);
     if (!selection || selection === BACK) return undefined;
     if (selection.startsWith(NAV_PREFIX)) {
       return selection.slice(NAV_PREFIX.length) as Exclude<WorkspaceExit, undefined>;

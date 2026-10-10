@@ -1,7 +1,7 @@
 {
-  "name": "pi-extmgr",
-  "version": "0.4.0",
-  "description": "Enhanced UX for managing local Pi extensions and community packages",
+  "name": "pi-extmgr-popup",
+  "version": "0.4.1",
+  "description": "Tabbed popup manager for local Pi extensions and community packages (Browse · Installed · Settings)",
   "keywords": [
     "pi-package",
     "pi-extension",
@@ -16,11 +16,11 @@
   "author": "ayagmar",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ayagmar/pi-extmgr.git"
+    "url": "git+https://github.com/Gendyyy/pi-extmgr-popup.git"
   },
-  "homepage": "https://ayagmar.github.io/pi-extmgr",
+  "homepage": "https://github.com/Gendyyy/pi-extmgr-popup",
   "bugs": {
-    "url": "https://github.com/ayagmar/pi-extmgr/issues"
+    "url": "https://github.com/Gendyyy/pi-extmgr-popup/issues"
   },
   "type": "module",
   "main": "./src/index.ts",

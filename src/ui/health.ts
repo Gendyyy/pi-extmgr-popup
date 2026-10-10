@@ -29,6 +29,7 @@ import { normalizePathIdentity } from "../utils/path-identity.js";
 import { getExtmgrTrashDir } from "../utils/pi-paths.js";
 import { type ReloadRequiredState, readReloadState } from "../utils/reload-state.js";
 import { confirmReload, reloadNow } from "../utils/ui-helpers.js";
+import { box, popupHeight, popupWidth } from "./popup/chrome.js";
 import { getStatusIcon } from "./theme.js";
 import {
   buildWorkspaceNavigation,
@@ -154,7 +155,8 @@ function renderHealthLines(
   snapshot: HealthSnapshot,
   width: number,
   theme: Theme,
-  cancelHint: string
+  cancelHint: string,
+  popup = false
 ): string[] {
   const safeWidth = Math.max(1, width);
   const lines: string[] = [];
@@ -165,8 +167,8 @@ function renderHealthLines(
     snapshot.conflicts.length === 0 && incompatible.length === 0 && !snapshot.reload.required;
 
   lines.push(
-    truncateToWidth(buildWorkspaceNavigation(theme, "health"), safeWidth, ""),
-    "",
+    ...(popup ? [] : [truncateToWidth(buildWorkspaceNavigation(theme, "health"), safeWidth, "")]),
+    ...(popup ? [] : [""]),
     truncateToWidth(
       `${getStatusIcon(theme, healthOk ? "success" : "warning")} ${theme.bold("Health")}`,
       safeWidth,
@@ -278,69 +280,80 @@ function renderHealthLines(
 
 async function showHealthPanel(
   snapshot: HealthSnapshot,
-  ctx: ExtensionCommandContext
+  ctx: ExtensionCommandContext,
+  popup: boolean
 ): Promise<HealthAction | undefined> {
   return runCustomUI(ctx, "Health", () =>
-    ctx.ui.custom<HealthAction>((tui, theme, keybindings, done) => {
-      const border = new DynamicBorder((s: string) => theme.fg("accent", s));
-      let focused = false;
-      const component = {
-        get focused() {
-          return focused;
-        },
-        set focused(value: boolean) {
-          focused = value;
-        },
-        render(width: number) {
-          return [
-            ...border.render(width),
-            ...renderHealthLines(
+    ctx.ui.custom<HealthAction>(
+      (tui, theme, keybindings, done) => {
+        const border = new DynamicBorder((s: string) => theme.fg("accent", s));
+        let focused = false;
+        const component = {
+          get focused() {
+            return focused;
+          },
+          set focused(value: boolean) {
+            focused = value;
+          },
+          render(width: number) {
+            const lines = renderHealthLines(
               snapshot,
-              width,
+              width - (popup ? 2 : 0),
               theme,
-              activeKeyHint(keybindings, "tui.select.cancel", "back")
-            ),
-            ...border.render(width),
-          ];
-        },
-        invalidate() {
-          border.invalidate();
-        },
-        handleInput(data: string) {
-          const screen = matchWorkspaceNavigation(data, "health");
-          if (screen) {
-            if (screen !== "health") done({ type: "workspace", screen });
-            return;
+              activeKeyHint(keybindings, "tui.select.cancel", "back"),
+              popup
+            );
+            if (!popup) return [...border.render(width), ...lines, ...border.render(width)];
+            const bodyHeight = Math.max(1, popupHeight(tui.terminal.rows) - 6);
+            const clipped = lines.slice(0, bodyHeight);
+            while (clipped.length < bodyHeight) clipped.push("");
+            return box(clipped, width, theme, "Health");
+          },
+          invalidate() {
+            border.invalidate();
+          },
+          handleInput(data: string) {
+            const screen = popup ? undefined : matchWorkspaceNavigation(data, "health");
+            if (screen) {
+              if (screen !== "health") done({ type: "workspace", screen });
+              return;
+            }
+            if (data === "r" || data === "R") {
+              done({ type: "refresh" });
+              return;
+            }
+            if (data === "c" || data === "C") {
+              done({ type: "conflict" });
+              return;
+            }
+            if (data === "f" || data === "F") {
+              done({ type: "fix-safe" });
+              return;
+            }
+            if (data === "l" || data === "L") {
+              done({ type: "reload" });
+              return;
+            }
+            if (data === "t" || data === "T") {
+              done({ type: "trash" });
+              return;
+            }
+            if (keybindings.matches(data, "tui.select.cancel") || matchesKey(data, Key.escape)) {
+              done({ type: "back" });
+              return;
+            }
+            tui.requestRender();
+          },
+        };
+        return component;
+      },
+      popup
+        ? {
+            overlay: true,
+            overlayOptions: () => ({ anchor: "center", width: popupWidth(), maxHeight: "90%" }),
           }
-          if (data === "r" || data === "R") {
-            done({ type: "refresh" });
-            return;
-          }
-          if (data === "c" || data === "C") {
-            done({ type: "conflict" });
-            return;
-          }
-          if (data === "f" || data === "F") {
-            done({ type: "fix-safe" });
-            return;
-          }
-          if (data === "l" || data === "L") {
-            done({ type: "reload" });
-            return;
-          }
-          if (data === "t" || data === "T") {
-            done({ type: "trash" });
-            return;
-          }
-          if (keybindings.matches(data, "tui.select.cancel") || matchesKey(data, Key.escape)) {
-            done({ type: "back" });
-            return;
-          }
-          tui.requestRender();
-        },
-      };
-      return component;
-    })
+        : undefined
+    )
   );
 }
 
@@ -489,7 +502,8 @@ async function handleConflictAction(
 
 export async function showHealth(
   ctx: ExtensionCommandContext,
-  pi: ExtensionAPI
+  pi: ExtensionAPI,
+  popup = false
 ): Promise<WorkspaceExit> {
   if (
     !requireCustomUI(
@@ -502,7 +516,7 @@ export async function showHealth(
   }
 
   while (true) {
-    setWorkspaceTitle(ctx, "health");
+    if (!popup) setWorkspaceTitle(ctx, "health");
     let snapshot: HealthSnapshot;
     try {
       snapshot = await loadHealthSnapshot(ctx, pi);
@@ -515,9 +529,12 @@ export async function showHealth(
       return undefined;
     }
 
-    const action = await showHealthPanel(snapshot, ctx);
+    const action = await showHealthPanel(snapshot, ctx, popup);
     if (!action || action.type === "back") return undefined;
-    if (action.type === "workspace") return action.screen;
+    if (action.type === "workspace") {
+      if (popup) continue;
+      return action.screen;
+    }
     if (action.type === "refresh") continue;
     if (action.type === "reload") {
       if (typeof ctx.reload !== "function") {

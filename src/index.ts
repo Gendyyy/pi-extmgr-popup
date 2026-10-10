@@ -11,22 +11,13 @@ import {
 import { Key } from "@earendil-works/pi-tui";
 import { createAutoUpdateNotificationHandler } from "./commands/auto-update.js";
 import { refreshLocalCompletionIndex } from "./commands/completion.js";
-import {
-  getExtensionsAutocompleteItems,
-  resolveCommand,
-  runResolvedCommand,
-  showNonInteractiveHelp,
-  showUnknownCommandMessage,
-} from "./commands/registry.js";
-import { installPackage } from "./packages/install.js";
+import { showExtensionsPopup } from "./ui/popup/index.js";
 import { restorePiTitle } from "./ui/workspace/title.js";
 import {
   type ContextProvider,
   startAutoUpdateTimer,
   stopAutoUpdateTimer,
 } from "./utils/auto-update.js";
-import { tokenizeArgs } from "./utils/command.js";
-import { isPackageSource } from "./utils/format.js";
 import { logWarning, setConsoleDiagnosticsEnabled } from "./utils/log.js";
 import { isProjectTrusted } from "./utils/mode.js";
 import { clearReloadRequired } from "./utils/reload-state.js";
@@ -35,30 +26,11 @@ import { updateExtmgrStatus } from "./utils/status.js";
 import { wasContextReloaded } from "./utils/ui-helpers.js";
 
 async function executeExtensionsCommand(
-  args: string,
   ctx: ExtensionCommandContext,
   pi: ExtensionAPI
 ): Promise<void> {
   try {
-    const tokens = tokenizeArgs(args);
-    const resolved = resolveCommand(tokens);
-
-    if (resolved) {
-      await runResolvedCommand(resolved, ctx, pi);
-      return;
-    }
-
-    const rawSubcommand = tokens[0];
-    if (rawSubcommand && isPackageSource(rawSubcommand)) {
-      await installPackage(args.trim(), ctx, pi);
-      return;
-    }
-
-    if (ctx.hasUI) {
-      showUnknownCommandMessage(rawSubcommand, ctx);
-    } else {
-      showNonInteractiveHelp(ctx);
-    }
+    await showExtensionsPopup(ctx, pi);
   } finally {
     // Workspace screens set the terminal title while open; hand it back to
     // pi's format on the way out. After an in-process reload pi re-asserts
@@ -71,10 +43,9 @@ async function executeExtensionsCommand(
 
 export default function extensionsManager(pi: ExtensionAPI) {
   pi.registerCommand("extensions", {
-    description: "Manage local extensions and browse/install community packages",
-    getArgumentCompletions: getExtensionsAutocompleteItems,
-    handler: async (args, ctx) => {
-      await executeExtensionsCommand(args, ctx, pi);
+    description: "Open the extensions popup (Browse · Installed · Settings)",
+    handler: async (_args, ctx) => {
+      await executeExtensionsCommand(ctx, pi);
       if (wasContextReloaded(ctx)) return;
       await refreshLocalCompletionIndex(ctx.cwd, isProjectTrusted(ctx)).catch((error) => {
         logWarning("Failed to refresh local completions:", error);
@@ -87,7 +58,7 @@ export default function extensionsManager(pi: ExtensionAPI) {
     handler: async (ctx) => {
       // Shortcut contexts satisfy everything the manager uses at runtime
       // (ui, cwd, trust); command-only members like reload() are guarded.
-      await executeExtensionsCommand("", ctx as ExtensionCommandContext, pi);
+      await executeExtensionsCommand(ctx as ExtensionCommandContext, pi);
     },
   });
 
