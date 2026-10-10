@@ -6,7 +6,14 @@
 #     git config merge.forkours.driver true
 #
 # (`true` exits 0 without writing %A, so git keeps the current branch's copy.)
-# The scheduled "Upstream sync" workflow sets it up automatically, then verifies
+#
+# `merge=forktheirs` is the opposite: it hands upstream's side the result, which is
+# what package.json wants because the fork keeps no local package.json changes.
+# Enable it with:
+#
+#     git config merge.forktheirs.driver "cp %B %A"
+#
+# The scheduled "Upstream sync" workflow sets both up automatically, then verifies
 # that these paths are byte-identical to master after the merge and reports every
 # upstream commit that touched them, so nothing upstream is dropped silently.
 #

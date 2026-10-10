@@ -278,13 +278,19 @@ Each sync pull request reports every upstream commit that touched one of those f
 subjects), so an upstream fix is never dropped silently — port it by hand when it matters. To pin another path, add it
 to both files; the workflow fails when `.gitattributes` and `scripts/fork-owned-paths.txt` drift apart.
 
-The `merge=forkours` driver has to be enabled in every clone you merge from:
+`package.json` is handled the other way round: the fork keeps upstream's own name, version and repository, so
+upstream's side of a conflict is always correct there. It is pinned with `merge=forktheirs`, which hands the result
+to upstream's copy.
+
+Both drivers have to be enabled in every clone you merge from:
 
 ```bash
-git config merge.forkours.driver true
+git config merge.forkours.driver true              # pinned files: keep the fork's copy
+git config merge.forktheirs.driver "cp %B %A"      # package.json: take upstream's copy
 ```
 
-(`true` exits 0 without writing the output file, so git keeps the current branch's copy.)
+`merge=forkours` runs `true`, which exits 0 without writing the output file, so git keeps the current branch's copy,
+and `merge=forktheirs` overwrites it with upstream's version.
 
 **Conflicts.** `pnpm-lock.yaml` conflicts resolve themselves (the lockfile is regenerated from the merged
 `package.json`). Anything else fails the run with the conflicting paths in the run summary. Resolve once, then export
