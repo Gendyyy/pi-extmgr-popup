@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.1](https://github.com/ayagmar/pi-extmgr/compare/v0.4.0...v0.4.1) (2026-10-16)
+
+### Features
+
+* toggle all package resources and restore previous filters ([00f0388](https://github.com/ayagmar/pi-extmgr/commit/00f0388439eceaf966de134ae24543a32fb8f484))
+
+### Bug Fixes
+
+* harden whole-package toggle follow-ups ([4e9ee73](https://github.com/ayagmar/pi-extmgr/commit/4e9ee73b67c7bb4b7b5d7c6f724edee2453f10c3))
+
 ## [0.4.0](https://github.com/ayagmar/pi-extmgr/compare/v0.3.0...v0.4.0) (2026-10-04)
 
 ### ⚠ BREAKING CHANGES
