@@ -26,3 +26,5 @@ README.md merge=forkours
 src/ui/health.ts merge=forkours
 src/ui/help.ts merge=forkours
 src/ui/profiles.ts merge=forkours
+# The popup hides the persistent package-counter status line; upstream still owns it.
+src/utils/status.ts merge=forkours
