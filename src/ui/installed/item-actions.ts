@@ -2,8 +2,12 @@
 import { type ExtensionAPI, type ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { removeLocalExtension } from "../../extensions/discovery.js";
 import { undoExtensionTrash } from "../../extensions/trash.js";
+import {
+  applyPackageStateChange,
+  discardPackageSnapshot,
+  togglePackage,
+} from "../../packages/activation.js";
 import { getInstalledPackagesAllScopes } from "../../packages/discovery.js";
-import { applyPackageExtensionStateChanges } from "../../packages/extensions.js";
 import { removePackageWithOutcome, updatePackageWithOutcome } from "../../packages/management.js";
 import { comparePackageScopes, movePackageBetweenScopes } from "../../packages/scopes.js";
 import {
@@ -39,8 +43,8 @@ const LOCAL_ACTION_OPTIONS = {
 const PACKAGE_ACTION_OPTIONS = {
   details: "View full details",
   configure: "Configure package extensions",
-  enable: "Enable all package extensions",
-  disable: "Disable all package extensions",
+  enable: "Enable package",
+  disable: "Disable package",
   update: "Update package",
   compare: "Compare scopes",
   "move-global": "Move to global scope",
@@ -122,6 +126,7 @@ export function buildUnifiedItemDetailLines(
     `Version: ${item.version || "unknown"}`,
     `Source: ${item.source}`,
     `Scope: ${item.scope}`,
+    ...(item.disabled ? ["State: disabled (extensions, skills, prompts, themes)"] : []),
     ...(extensionState ? [`Extensions: ${extensionState}`] : []),
     ...(item.size !== undefined ? [`Size: ${formatBytes(item.size)}`] : []),
     ...(item.description ? [`Description: ${item.description}`] : []),
@@ -330,27 +335,46 @@ export async function handlePackageItemAction(
     }
     case "enable":
     case "disable": {
-      if (!item.extensionPaths?.length) {
-        ctx.ui.notify("No package extension entrypoints were discovered.", "warning");
-        return "resume";
-      }
       const target: State = selection === "enable" ? "enabled" : "disabled";
-      const result = await applyPackageExtensionStateChanges(
-        item.source,
-        item.scope,
-        item.extensionPaths.map((extensionPath) => ({ extensionPath, target })),
-        ctx.cwd,
-        isProjectTrusted(ctx)
-      );
+      const projectTrusted = isProjectTrusted(ctx);
+      let result = await togglePackage(item, target, ctx.cwd, projectTrusted);
+      if (!result.ok && result.snapshotConflict) {
+        const discard = await ctx.ui.confirm(
+          "Package settings changed",
+          `${result.error}\nDiscard the configuration saved when it was disabled and keep the current filters?`
+        );
+        if (!discard) return "resume";
+        result = await discardPackageSnapshot(item.source, item.scope, ctx.cwd, projectTrusted);
+        if (result.ok && target === "enabled") {
+          ctx.ui.notify("Discarded the saved configuration; current filters are kept.", "info");
+          return "resume";
+        }
+        if (result.ok) {
+          result = await applyPackageStateChange(
+            item.source,
+            item.scope,
+            target,
+            ctx.cwd,
+            projectTrusted
+          );
+        }
+      }
       if (!result.ok) {
         ctx.ui.notify(`Package toggle failed: ${result.error}`, "error");
         return "resume";
       }
+      if (!result.changed) {
+        ctx.ui.notify(
+          result.message ?? "Package configuration is already in the requested state.",
+          "info"
+        );
+        return "resume";
+      }
       ctx.ui.notify(
-        `${target === "enabled" ? "Enabled" : "Disabled"} ${item.displayName}.`,
+        `${result.message ?? `${target === "enabled" ? "Enabled" : "Disabled"} ${item.displayName} (${item.scope}).`} Reload, then start a fresh session to drop skill instructions already in context.`,
         "info"
       );
-      return confirmReload(ctx, "Package extension state changed.");
+      return confirmReload(ctx, "Package resource configuration changed.");
     }
     case "configure": {
       const outcome = await configurePackageExtensions(pkg, ctx, pi);
