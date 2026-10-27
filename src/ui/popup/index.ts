@@ -19,7 +19,11 @@ import {
   type UnifiedItem,
 } from "../../types/index.js";
 import { throwIfAborted } from "../../utils/abort.js";
-import { getAutoUpdateStatus, getKnownUpdates } from "../../utils/auto-update.js";
+import {
+  getAutoUpdateStatus,
+  getKnownUpdates,
+  refreshKnownUpdates,
+} from "../../utils/auto-update.js";
 import { parseNpmSource } from "../../utils/format.js";
 import { hasCustomUI, isProjectTrusted } from "../../utils/mode.js";
 import { findPackageRepository, openRepository } from "../../utils/open-repository.js";
@@ -55,7 +59,7 @@ type PopupAction =
   | { type: "setting"; id: SettingId }
   | { type: "github"; pkg: NpmPackage | UnifiedItem };
 
-type InstalledData = { items: UnifiedItem[]; byId: Map<string, UnifiedItem> };
+export type InstalledData = { items: UnifiedItem[]; byId: Map<string, UnifiedItem> };
 
 /** UI components only select actions; mutations and reloads happen back in command context. */
 export async function showExtensionsPopup(
@@ -335,7 +339,8 @@ function npmNames(sources: string[]): Set<string> {
   );
 }
 
-async function loadInstalled(
+/** Loads installed packages plus the live update set for the Installed tab. */
+export async function loadInstalled(
   ctx: ExtensionCommandContext,
   pi: ExtensionAPI,
   signal: AbortSignal
@@ -349,7 +354,11 @@ async function loadInstalled(
     projectTrusted: isProjectTrusted(ctx),
   });
   throwIfAborted(signal);
-  const items = buildUnifiedItems(local, packages, getKnownUpdates(ctx), extensions);
+  // Check live: the persisted snapshot is only as fresh as the last scheduled
+  // check, and scheduled checks are off by default.
+  const knownUpdates = await refreshKnownUpdates(pi, ctx);
+  throwIfAborted(signal);
+  const items = buildUnifiedItems(local, packages, knownUpdates, extensions);
   return { items, byId: new Map(items.map((item) => [item.id, item])) };
 }
 

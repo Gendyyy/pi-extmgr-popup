@@ -82,7 +82,9 @@ export async function updateExtmgrStatus(
     // outside extmgr do not leave stale badges and attention prompts behind.
     const knownUpdates = autoUpdateConfig.updatesAvailable ?? [];
     let validUpdates = filterStaleUpdates(knownUpdates, packages, ctx.cwd);
-    if (validUpdates.length > 0) {
+    // Scheduled checks keep the cache fresh. With them off (the default)
+    // nothing else would ever discover an update, so reconcile live here.
+    if (validUpdates.length > 0 || !autoUpdateConfig.enabled) {
       validUpdates = filterStaleUpdates(
         [...(await refreshKnownUpdates(pi, ctx))],
         packages,

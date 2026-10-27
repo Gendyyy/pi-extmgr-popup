@@ -6,6 +6,7 @@ import test from "node:test";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import { restorePiTitle, setWorkspaceTitle } from "../src/ui/workspace/title.js";
 import { clearReloadRequired, markReloadRequired } from "../src/utils/reload-state.js";
+import { getAutoUpdateConfigAsync } from "../src/utils/settings.js";
 import { updateExtmgrStatus } from "../src/utils/status.js";
 import { createMockHarness } from "./helpers/mocks.js";
 import { mockPackageCatalog } from "./helpers/package-catalog.js";
@@ -99,4 +100,31 @@ void test("title updates are skipped outside the TUI", () => {
   restorePiTitle(ctx);
 
   assert.deepEqual(titles, []);
+});
+
+void test("a live check discovers updates when scheduled checks are off", async () => {
+  await withIsolatedState(async () => {
+    const restoreCatalog = mockPackageCatalog({
+      packages: [{ source: "npm:demo", name: "demo", scope: "global", version: "1.0.0" }],
+      updates: [{ source: "npm:demo", displayName: "demo", type: "npm", scope: "global" }],
+    });
+    try {
+      const { pi, ctx, statuses, widgets } = createMockHarness({ hasUI: true });
+
+      await updateExtmgrStatus(ctx, pi);
+
+      assert.match(statuses.get("extmgr") ?? "", /1 update/);
+      const shown = widgets.get("extmgr-attention") ?? [];
+      assert.ok(
+        shown.some((line) => line.includes("update")),
+        "expected an attention prompt"
+      );
+
+      // The discovery must persist so a later render can reuse it without a check.
+      const config = await getAutoUpdateConfigAsync(ctx);
+      assert.deepEqual(config.updatesAvailable, ["npm:demo"]);
+    } finally {
+      restoreCatalog();
+    }
+  });
 });
