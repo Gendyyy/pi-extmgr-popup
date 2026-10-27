@@ -213,12 +213,20 @@ export async function promptAutoUpdateWizard(
   }
 
   const current = getAutoUpdateConfig(ctx);
+  const startupEnabled = current.updateOnStart !== false;
+  const startupChoice = `Startup updates: ${startupEnabled ? "on" : "off"}`;
+
   const choice = parseChoiceByLabel(
-    AUTO_UPDATE_WIZARD_CHOICES,
-    await ctx.ui.select(
-      `Scheduled update checks (${current.displayText})`,
-      Object.values(AUTO_UPDATE_WIZARD_CHOICES)
-    )
+    { ...AUTO_UPDATE_WIZARD_CHOICES, startup: startupChoice } satisfies Record<string, string>,
+    await ctx.ui.select(`Scheduled update checks (${current.displayText})`, [
+      AUTO_UPDATE_WIZARD_CHOICES.off,
+      AUTO_UPDATE_WIZARD_CHOICES.hour,
+      AUTO_UPDATE_WIZARD_CHOICES.daily,
+      AUTO_UPDATE_WIZARD_CHOICES.weekly,
+      startupChoice,
+      AUTO_UPDATE_WIZARD_CHOICES.custom,
+      AUTO_UPDATE_WIZARD_CHOICES.cancel,
+    ])
   );
 
   switch (choice) {
@@ -233,6 +241,11 @@ export async function promptAutoUpdateWizard(
       return;
     case "weekly":
       enableAutoUpdate(pi, ctx, 7 * 24 * 60 * 60 * 1000, "weekly", onUpdateAvailable);
+      return;
+    case "startup":
+      saveAutoUpdateConfig(pi, { ...current, updateOnStart: !startupEnabled });
+      logAutoUpdateConfig(pi, `startup updates ${startupEnabled ? "off" : "on"}`, true);
+      notify(ctx, `Startup updates ${startupEnabled ? "off" : "on"}`, "info");
       return;
     case "cancel":
     case undefined:
@@ -266,6 +279,7 @@ export function enableAutoUpdate(
   onUpdateAvailable?: (packages: string[]) => void
 ): void {
   const config: AutoUpdateConfig = {
+    ...getAutoUpdateConfig(ctx),
     intervalMs,
     enabled: true,
     displayText,

@@ -23,12 +23,15 @@ export interface AutoUpdateConfig {
   enabled: boolean;
   displayText: string; // Human-readable description
   updatesAvailable?: string[];
+  /** Apply outdated packages automatically at pi startup (default: true). */
+  updateOnStart?: boolean;
 }
 
 const DEFAULT_CONFIG: AutoUpdateConfig = {
   intervalMs: 0,
   enabled: false,
   displayText: "off",
+  updateOnStart: true,
 };
 
 const SETTINGS_KEY = "extmgr-auto-update";
@@ -85,6 +88,10 @@ function sanitizeAutoUpdateConfig(input: unknown): AutoUpdateConfig {
 
   if (typeof input.enabled === "boolean") {
     config.enabled = input.enabled;
+  }
+
+  if (typeof input.updateOnStart === "boolean") {
+    config.updateOnStart = input.updateOnStart;
   }
 
   if (typeof input.displayText === "string" && input.displayText.trim()) {

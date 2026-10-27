@@ -22,6 +22,7 @@ import { logWarning, setConsoleDiagnosticsEnabled } from "./utils/log.js";
 import { isProjectTrusted } from "./utils/mode.js";
 import { clearReloadRequired } from "./utils/reload-state.js";
 import { getAutoUpdateConfig, hydrateAutoUpdateConfig } from "./utils/settings.js";
+import { applyStartupUpdates } from "./utils/startup-update.js";
 import { updateExtmgrStatus } from "./utils/status.js";
 import { wasContextReloaded } from "./utils/ui-helpers.js";
 
@@ -65,6 +66,8 @@ export default function extensionsManager(pi: ExtensionAPI) {
   // The context of the running session. pi retires it on reload and session
   // replacement, so background work must look it up instead of capturing it.
   let activeCtx: ExtensionContext | undefined;
+  // /new, /resume and forks reopen the session; startup updates run once per process.
+  let startupUpdatesAttempted = false;
 
   async function updateStatusBar(ctx: ExtensionCommandContext | ExtensionContext): Promise<void> {
     await updateExtmgrStatus(ctx, pi);
@@ -88,6 +91,12 @@ export default function extensionsManager(pi: ExtensionAPI) {
       startAutoUpdateTimer(pi, getCtx, createAutoUpdateNotificationHandler(ctx));
     } else {
       stopAutoUpdateTimer();
+    }
+
+    if (!startupUpdatesAttempted) {
+      startupUpdatesAttempted = true;
+      // Apply outdated packages before anything reads their versions.
+      await applyStartupUpdates(pi, ctx);
     }
 
     setImmediate(() => {
