@@ -83,6 +83,41 @@ void test("attention widget drops stale update prompts after packages were updat
   });
 });
 
+void test("footer package counter is never published", async () => {
+  await withIsolatedState(async () => {
+    const restoreCatalog = mockPackageCatalog({
+      packages: [
+        { source: "npm:demo", name: "demo", scope: "global" },
+        { source: "npm:other", name: "other", scope: "global" },
+      ],
+      updates: [],
+    });
+    try {
+      const { pi, ctx, entries, statuses } = createMockHarness({ hasUI: true });
+      entries.push({
+        type: "custom",
+        customType: "extmgr-auto-update",
+        data: {
+          enabled: true,
+          intervalMs: 24 * 60 * 60 * 1000,
+          displayText: "daily",
+          updatesAvailable: [],
+        },
+      });
+
+      await updateExtmgrStatus(ctx, pi);
+
+      assert.equal(
+        statuses.get("extmgr"),
+        undefined,
+        "expected no 'N pkgs • <schedule>' footer status"
+      );
+    } finally {
+      restoreCatalog();
+    }
+  });
+});
+
 void test("workspace titles are set per screen and restored to pi's format", () => {
   const { ctx, titles } = createMockHarness({ hasUI: true, cwd: "/workspace/demo-project" });
 
@@ -113,7 +148,8 @@ void test("a live check discovers updates when scheduled checks are off", async 
 
       await updateExtmgrStatus(ctx, pi);
 
-      assert.match(statuses.get("extmgr") ?? "", /1 update/);
+      // The footer counter was dropped on purpose; only the attention widget announces it.
+      assert.equal(statuses.get("extmgr"), undefined);
       const shown = widgets.get("extmgr-attention") ?? [];
       assert.ok(
         shown.some((line) => line.includes("update")),

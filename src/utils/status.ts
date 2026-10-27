@@ -8,7 +8,7 @@ import {
   getAgentDir,
 } from "@earendil-works/pi-coding-agent";
 import { getPackageCatalog, type PackageCatalog } from "../packages/catalog.js";
-import { getAutoUpdateStatus, refreshKnownUpdates } from "./auto-update.js";
+import { refreshKnownUpdates } from "./auto-update.js";
 import { isProjectTrusted } from "./mode.js";
 import { normalizePackageIdentity } from "./package-source.js";
 import { getProjectConfigDir } from "./pi-paths.js";
@@ -66,16 +66,6 @@ export async function updateExtmgrStatus(
       getAutoUpdateConfigAsync(ctx),
       readReloadState(),
     ]);
-    const statusParts: string[] = [];
-
-    if (packages.length > 0) {
-      statusParts.push(`${packages.length} pkg${packages.length === 1 ? "" : "s"}`);
-    }
-
-    const autoUpdateStatus = getAutoUpdateStatus(ctx);
-    if (autoUpdateStatus) {
-      statusParts.push(autoUpdateStatus);
-    }
 
     // Remove markers for uninstalled packages first. If any cached markers
     // remain, reconcile them with a live package-manager check so updates made
@@ -97,16 +87,9 @@ export async function updateExtmgrStatus(
       });
     }
 
-    if (validUpdates.length > 0) {
-      statusParts.push(`${validUpdates.length} update${validUpdates.length === 1 ? "" : "s"}`);
-    }
-
-    if (statusParts.length > 0) {
-      ctx.ui.setStatus("extmgr", ctx.ui.theme.fg("dim", statusParts.join(" • ")));
-    } else {
-      ctx.ui.setStatus("extmgr", undefined);
-    }
-
+    // The persistent "N pkgs • <schedule>" footer counter is intentionally not
+    // published; only the attention widget announces updates or a pending reload.
+    ctx.ui.setStatus("extmgr", undefined);
     updateAttentionWidget(ctx, validUpdates.length, reloadState.required);
   } catch {
     // Best-effort status updates only
