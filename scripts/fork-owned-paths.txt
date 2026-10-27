@@ -1,5 +1,0 @@
-README.md
-src/ui/health.ts
-src/ui/help.ts
-src/ui/profiles.ts
-src/utils/status.ts

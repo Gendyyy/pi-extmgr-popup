@@ -2,38 +2,24 @@
 
 ![pi-extmgr banner](https://i.imgur.com/Ce513Br.png)
 
-[![CI](https://github.com/ayagmar/pi-extmgr/actions/workflows/ci.yml/badge.svg)](https://github.com/ayagmar/pi-extmgr/actions/workflows/ci.yml)
+[![CI](https://github.com/Gendyyy/pi-extmgr-popup/actions/workflows/ci.yml/badge.svg)](https://github.com/Gendyyy/pi-extmgr-popup/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A better way to manage Pi extensions. Browse, install, enable/disable, and remove extensions from one floating popup.
 Built on top of Pi's native package install, update, and config flows, so extmgr stays aligned with current upstream behavior.
 
-This fork (`pi-extmgr-popup`) replaces the original full-screen manager and its `/extensions <subcommand>`
+This package (`pi-extmgr-popup`) replaces the original full-screen manager and its `/extensions <subcommand>`
 command surface with a single centered popup: **Browse · Installed · Settings**. `/extensions` and
 `Ctrl+Alt+E` open the popup and nothing else.
 
-**🌐 [pi-extmgr landing page](https://ayagmar.github.io/pi-extmgr)**
-
 ## Install
-
-```bash
-pi install npm:pi-extmgr
-```
-
-Or install straight from GitHub:
-
-```bash
-pi install git:github.com/ayagmar/pi-extmgr
-```
-
-This fork is installed from its own repo or straight from the working copy:
 
 ```bash
 pi install git:github.com/Gendyyy/pi-extmgr-popup
 pi install /Users/ahmedgendy/Projects/pi-extmgr-popup   # local working copy
 ```
 
-Do not install the fork and upstream `pi-extmgr` at the same time — both register `/extensions`.
+Do not install this package alongside the original `pi-extmgr` — both register `/extensions`.
 Remove one first with `pi remove npm:pi-extmgr`.
 
 If Pi is already running, use `/reload`.
@@ -253,78 +239,11 @@ notifications.
 - **Trash lifecycle**: Local removals move to `~/.pi/agent/.extmgr-trash/` with persistent records. Undo refuses to overwrite a replacement file, and expired or missing records are cleaned up.
 - **Metadata safety**: Missing compatibility, provenance, checksum, or target-version metadata is reported as `unknown`, never `safe`. Target-version previews, exact target badges, and update-policy/maintenance-window enforcement are intentionally deferred because Pi does not expose structured target metadata.
 
-## Keeping up with upstream
-
-This fork tracks `ayagmar/pi-extmgr` automatically without letting upstream overwrite the popup UI.
-
-**How it works.** A scheduled workflow ([`.github/workflows/upstream-sync.yml`](.github/workflows/upstream-sync.yml),
-daily at 05:17 UTC — or run it by hand with `gh workflow run upstream-sync.yml -R Gendyyy/pi-extmgr-popup`; the
-`-R` matters because this clone also has an `upstream` remote, and `gh` would otherwise target `ayagmar/pi-extmgr`)
-fetches upstream and merges it
-into a throwaway `sync/upstream` branch, never straight into `master`. If the merge is clean and `pnpm run check`
-passes, the branch is pushed and a pull request is opened for review. A conflict fails the run and prints the exact
-commands to resolve it.
-
-**Fork-owned files.** Upstream merges must never touch the popup implementation. These paths are listed in
-[`scripts/fork-owned-paths.txt`](scripts/fork-owned-paths.txt) and pinned in [`.gitattributes`](.gitattributes) with
-`merge=forkours`, so an upstream merge keeps the fork's copy instead of writing conflict markers:
-
-| File | Why the fork owns it |
-| --- | --- |
-| `README.md` | documents the popup, not the upstream full-screen manager |
-| `src/ui/help.ts` | popup help text |
-| `src/ui/profiles.ts` | popup-mode chrome for the profile screens |
-| `src/ui/health.ts` | popup-mode chrome for the health screen |
-
-Each sync pull request reports every upstream commit that touched one of those files (a count per file plus the
-subjects), so an upstream fix is never dropped silently — port it by hand when it matters. To pin another path, add it
-to both files; the workflow fails when `.gitattributes` and `scripts/fork-owned-paths.txt` drift apart.
-
-`package.json` is handled the other way round: the fork keeps upstream's own name, version and repository, so
-upstream's side of a conflict is always correct there. It is pinned with `merge=forktheirs`, which hands the result
-to upstream's copy.
-
-Both drivers have to be enabled in every clone you merge from:
-
-```bash
-git config merge.forkours.driver true              # pinned files: keep the fork's copy
-git config merge.forktheirs.driver "cp %B %A"      # package.json: take upstream's copy
-```
-
-`merge=forkours` runs `true`, which exits 0 without writing the output file, so git keeps the current branch's copy,
-and `merge=forktheirs` overwrites it with upstream's version.
-
-**Conflicts.** `pnpm-lock.yaml` conflicts resolve themselves (the lockfile is regenerated from the merged
-`package.json`). Anything else fails the run with the conflicting paths in the run summary. Resolve once, then export
-the resolution so later runs replay it automatically:
-
-```bash
-git config rerere.enabled true     # once per clone
-# ... resolve the merge, commit it, then:
-scripts/save-rerere.sh             # stages .github/rerere
-git commit                          # the workflow copies it back before merging
-```
-
-**Staying merge-friendly.** Prefer appending over deleting upstream lines, keep popup-only code in new files
-(`src/ui/popup/`, `src/utils/open-repository.ts`), and leave `package.json` byte-identical to upstream — it keeps
-upstream's own name and version, which is what makes upstream's release commits merge cleanly.
-
-**Manual sync** (the same steps the workflow runs):
-
-```bash
-git fetch upstream master
-git checkout -B sync/upstream origin/master
-git config merge.forkours.driver true
-git merge upstream/master
-pnpm run check
-git push --force origin sync/upstream
-```
-
 ## Releasing
 
-Releases are cut from GitHub Actions — never from a laptop. This is upstream's release flow; the fork keeps
-`package.json` identical to upstream and **cannot** publish to npm, because trusted publishing is registered to
-`ayagmar/pi-extmgr`. Run this workflow only if you later fork the publishing setup too.
+Releases are cut from GitHub Actions — never from a laptop. Publishing to npm needs a package of your own:
+`package.json` still carries upstream's name and trusted publishing is registered to `ayagmar/pi-extmgr`, so
+`npm publish` will fail until that identity is changed. Tagging and the GitHub release work as-is.
 
 1. Merge Conventional Commits (`feat:`, `fix:`, `feat!:` …) into `master`.
 2. Run **Actions → Release → Run workflow** (or `gh workflow run release.yml -f increment=auto`).
@@ -335,11 +254,11 @@ Releases are cut from GitHub Actions — never from a laptop. This is upstream's
 
 Preview locally with `pnpm release:dry`.
 
-Before the first release from this workflow, configure trusted publishing on npmjs.com for
-`pi-extmgr` (GitHub Actions · `ayagmar/pi-extmgr` · workflow `release.yml`); the package already
-exists on npm, so no `bootstrap` run is needed. If a run already tagged and created the GitHub
-release but failed at `npm publish`, re-run it with `publish_only: true` instead of cutting a new
-version.
+Before the first publish, configure trusted publishing on npmjs.com for your own package name
+(GitHub Actions · `Gendyyy/pi-extmgr-popup` · workflow `release.yml`), or run the workflow with
+`bootstrap: true` and an `NPM_TOKEN` secret for the very first publish. If a run already tagged and
+created the GitHub release but failed at `npm publish`, re-run it with `publish_only: true` instead of
+cutting a new version.
 
 ## License
 

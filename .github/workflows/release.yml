@@ -6,7 +6,7 @@ name: Release
 #   (OIDC; provenance is added automatically for public repos). No long-lived npm token is needed.
 #
 # One-time setup per package (npmjs.com → package → Settings → Trusted publishing):
-#   GitHub Actions · user: ayagmar · repo: <this repo> · workflow: release.yml · allow `npm publish`.
+#   GitHub Actions · user: Gendyyy · repo: <this repo> · workflow: release.yml · allow `npm publish`.
 # Trusted publishing can only be configured once the package exists on npm. For the very
 # first publish, run this workflow with `bootstrap: true` and an `NPM_TOKEN` repo secret
 # (granular, publish-only, short expiry), then configure trusted publishing and delete the secret.

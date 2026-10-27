@@ -15,7 +15,7 @@ npm run build    # Production build (minified)
 
 1. **Connect Repository**
    - Cloudflare Dashboard → Pages → "Connect to Git"
-   - Select `ayagmar/pi-extmgr` repository
+   - Select `Gendyyy/pi-extmgr-popup` repository
    - Select `master` branch
 
 2. **Build Settings**

@@ -1,6 +1,6 @@
 const CONFIG = {
   npmPackage: "pi-extmgr",
-  githubRepo: "ayagmar/pi-extmgr",
+  githubRepo: "Gendyyy/pi-extmgr-popup",
   fallbackVersion: "0.1.14",
 };
 

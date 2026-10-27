@@ -13,14 +13,14 @@
     "agent"
   ],
   "license": "MIT",
-  "author": "ayagmar",
+  "author": "Gendyyy",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ayagmar/pi-extmgr.git"
+    "url": "git+https://github.com/Gendyyy/pi-extmgr-popup.git"
   },
-  "homepage": "https://ayagmar.github.io/pi-extmgr",
+  "homepage": "https://github.com/Gendyyy/pi-extmgr-popup",
   "bugs": {
-    "url": "https://github.com/ayagmar/pi-extmgr/issues"
+    "url": "https://github.com/Gendyyy/pi-extmgr-popup/issues"
   },
   "type": "module",
   "main": "./src/index.ts",
@@ -34,7 +34,6 @@
     "extensions": [
       "./src/index.ts"
     ],
-    "video": "https://github.com/ayagmar/pi-extmgr/releases/download/demo/demo.mp4",
     "image": "https://i.imgur.com/Ce513Br.png"
   },
   "scripts": {
